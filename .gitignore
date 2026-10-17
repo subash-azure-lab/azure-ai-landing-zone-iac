@@ -1,0 +1,25 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+secrets.auto.tfvars
+*.secret.tfvars
+
+# Bicep / ARM build output
+*.json.bak
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Secrets (never commit)
+*.pfx
+*.pem
+*.key
+.env
+
+# Terraform plan / state copies
+tfplan
+old-state.json
