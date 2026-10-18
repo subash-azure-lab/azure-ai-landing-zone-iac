@@ -1,2 +1,2 @@
-environment     = "dev"
-cost_center     = "AI-Platform"
+environment = "dev"
+cost_center = "AI-Platform"
