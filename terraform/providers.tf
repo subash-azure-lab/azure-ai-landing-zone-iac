@@ -5,8 +5,9 @@ terraform {
     resource_group_name  = "rg-tfstate"
     storage_account_name = "sttfstatesubash01"
     container_name       = "tfstate"
-    key                  = "lz-dev.tfstate"
     use_azuread_auth     = true
+    # "key" (the state blob name) is supplied per environment at init:
+    #   terraform init -backend-config=backend-dev.hcl
   }
 
   required_providers {
