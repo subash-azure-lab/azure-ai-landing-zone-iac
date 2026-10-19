@@ -26,6 +26,12 @@ variable "subnets" {
   }))
 }
 
+variable "nsg_ids" {
+  description = "Map of subnet name to the ID of the NSG to attach. Subnets not listed get no NSG."
+  type        = map(string)
+  default     = {}
+}
+
 variable "tags" {
   description = "Tags applied to the VNet"
   type        = map(string)
