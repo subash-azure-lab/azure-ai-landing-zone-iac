@@ -1,0 +1,56 @@
+name: terraform-destroy
+
+# Manual only: nothing triggers this automatically.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to destroy"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      confirm:
+        description: "Type 'destroy' to confirm"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ARM_USE_OIDC: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+defaults:
+  run:
+    working-directory: terraform
+
+jobs:
+  destroy:
+    # Only from main, and only when the confirmation text is exactly "destroy".
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'destroy'
+    runs-on: ubuntu-latest
+    # Picks the dev or prod environment; prod's required reviewers apply here too.
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: terraform-${{ inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Init
+        run: terraform init -input=false -backend-config=backend-${{ inputs.environment }}.hcl
+
+      - name: Show what will be destroyed
+        run: terraform plan -destroy -var-file=${{ inputs.environment }}.tfvars -input=false -no-color
+
+      - name: Destroy
+        run: terraform destroy -var-file=${{ inputs.environment }}.tfvars -input=false -auto-approve
