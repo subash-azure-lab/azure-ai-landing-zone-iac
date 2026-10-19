@@ -6,6 +6,90 @@ locals {
 
   # First usable address in AzureFirewallSubnet (10.0.1.0/26); the firewall gets this IP.
   firewall_private_ip = "10.0.1.4"
+
+  # Rules Azure requires on the AzureBastionSubnet NSG.
+  bastion_rules = [
+    {
+      name                       = "AllowHttpsInbound"
+      priority                   = 120
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      destination_port_ranges    = ["443"]
+      source_address_prefix      = "Internet"
+      destination_address_prefix = "*"
+    },
+    {
+      name                       = "AllowGatewayManagerInbound"
+      priority                   = 130
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      destination_port_ranges    = ["443"]
+      source_address_prefix      = "GatewayManager"
+      destination_address_prefix = "*"
+    },
+    {
+      name                       = "AllowAzureLoadBalancerInbound"
+      priority                   = 140
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      destination_port_ranges    = ["443"]
+      source_address_prefix      = "AzureLoadBalancer"
+      destination_address_prefix = "*"
+    },
+    {
+      name                       = "AllowBastionHostCommunicationInbound"
+      priority                   = 150
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "*"
+      destination_port_ranges    = ["8080", "5701"]
+      source_address_prefix      = "VirtualNetwork"
+      destination_address_prefix = "VirtualNetwork"
+    },
+    {
+      name                       = "AllowSshRdpOutbound"
+      priority                   = 100
+      direction                  = "Outbound"
+      access                     = "Allow"
+      protocol                   = "*"
+      destination_port_ranges    = ["22", "3389"]
+      source_address_prefix      = "*"
+      destination_address_prefix = "VirtualNetwork"
+    },
+    {
+      name                       = "AllowAzureCloudOutbound"
+      priority                   = 110
+      direction                  = "Outbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      destination_port_ranges    = ["443"]
+      source_address_prefix      = "*"
+      destination_address_prefix = "AzureCloud"
+    },
+    {
+      name                       = "AllowBastionCommunicationOutbound"
+      priority                   = 120
+      direction                  = "Outbound"
+      access                     = "Allow"
+      protocol                   = "*"
+      destination_port_ranges    = ["8080", "5701"]
+      source_address_prefix      = "VirtualNetwork"
+      destination_address_prefix = "VirtualNetwork"
+    },
+    {
+      name                       = "AllowHttpOutbound"
+      priority                   = 130
+      direction                  = "Outbound"
+      access                     = "Allow"
+      protocol                   = "*"
+      destination_port_ranges    = ["80"]
+      source_address_prefix      = "*"
+      destination_address_prefix = "Internet"
+    },
+  ]
 }
 
 resource "azurerm_resource_group" "this" {
@@ -23,6 +107,39 @@ module "route_table_spoke1" {
   tags                = local.tags
 }
 
+module "nsg_bastion" {
+  source              = "./modules/nsg"
+  name                = "nsg-bastion-${var.environment}"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.this.name
+  rules               = local.bastion_rules
+  tags                = local.tags
+}
+
+module "nsg_aks" {
+  source              = "./modules/nsg"
+  name                = "nsg-aks-${var.environment}"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.this.name
+  tags                = local.tags
+}
+
+module "nsg_vm" {
+  source              = "./modules/nsg"
+  name                = "nsg-vm-${var.environment}"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.this.name
+  tags                = local.tags
+}
+
+module "nsg_data" {
+  source              = "./modules/nsg"
+  name                = "nsg-data-${var.environment}"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.this.name
+  tags                = local.tags
+}
+
 module "hub" {
   source              = "./modules/vnet"
   name                = "hub-vnet"
@@ -30,6 +147,10 @@ module "hub" {
   resource_group_name = azurerm_resource_group.this.name
   address_prefix      = "10.0.0.0/16"
   tags                = local.tags
+
+  nsg_ids = {
+    "AzureBastionSubnet" = module.nsg_bastion.id
+  }
 
   subnets = [
     { name = "AzureFirewallSubnet", prefix = "10.0.1.0/26" },
@@ -46,6 +167,11 @@ module "spoke1" {
   address_prefix      = "10.1.0.0/16"
   tags                = local.tags
 
+  nsg_ids = {
+    "aks-subnet" = module.nsg_aks.id
+    "vm-subnet"  = module.nsg_vm.id
+  }
+
   subnets = [
     { name = "aks-subnet", prefix = "10.1.1.0/24" },
     { name = "vm-subnet", prefix = "10.1.5.0/24" },
@@ -59,6 +185,10 @@ module "spoke2" {
   resource_group_name = azurerm_resource_group.this.name
   address_prefix      = "10.2.0.0/16"
   tags                = local.tags
+
+  nsg_ids = {
+    "data-subnet" = module.nsg_data.id
+  }
 
   subnets = [
     { name = "data-subnet", prefix = "10.2.1.0/24" },
