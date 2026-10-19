@@ -1,26 +1,21 @@
-name: terraform-dev
+name: terraform
 
 on:
   pull_request:
     paths:
       - "terraform/**"
-      - ".github/workflows/terraform-dev.yml"
+      - ".github/workflows/terraform.yml"
   push:
     branches:
       - main
     paths:
       - "terraform/**"
-      - ".github/workflows/terraform-dev.yml"
+      - ".github/workflows/terraform.yml"
 
 permissions:
   id-token: write
   contents: read
   pull-requests: write
-
-# Only one run per environment at a time; later runs wait instead of racing for the state lock.
-concurrency:
-  group: terraform-dev
-  cancel-in-progress: false
 
 env:
   ARM_USE_OIDC: "true"
@@ -34,9 +29,12 @@ defaults:
     working-directory: terraform
 
 jobs:
-  plan:
+  plan-dev:
     runs-on: ubuntu-latest
     environment: dev
+    concurrency:
+      group: terraform-dev
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +44,7 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=backend-dev.hcl
 
       - name: Validate
         run: terraform validate
@@ -78,15 +76,18 @@ jobs:
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan
+          name: tfplan-dev
           path: terraform/tfplan
           retention-days: 1
 
-  apply:
+  apply-dev:
     if: github.event_name == 'push'
-    needs: plan
+    needs: plan-dev
     runs-on: ubuntu-latest
     environment: dev
+    concurrency:
+      group: terraform-dev
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -95,11 +96,34 @@ jobs:
       - name: Download plan
         uses: actions/download-artifact@v4
         with:
-          name: tfplan
+          name: tfplan-dev
           path: terraform
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=backend-dev.hcl
 
       - name: Apply the saved plan
+        run: terraform apply -input=false tfplan
+
+  # The `prod` environment has required reviewers, so this job pauses until someone approves.
+  deploy-prod:
+    if: github.event_name == 'push'
+    needs: apply-dev
+    runs-on: ubuntu-latest
+    environment: prod
+    concurrency:
+      group: terraform-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Init
+        run: terraform init -input=false -backend-config=backend-prod.hcl
+
+      - name: Plan
+        run: terraform plan -var-file=prod.tfvars -input=false -no-color -out=tfplan
+
+      - name: Apply the plan
         run: terraform apply -input=false tfplan
