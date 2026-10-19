@@ -29,6 +29,19 @@ defaults:
     working-directory: terraform
 
 jobs:
+  # Static security scan of the Terraform code. No Azure login needed, nothing is deployed.
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkov scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform
+          framework: terraform
+          quiet: true
+
   plan-dev:
     runs-on: ubuntu-latest
     environment: dev
