@@ -1,0 +1,50 @@
+name: repo-backup
+
+# Nightly backup of the whole repo (all branches, tags, history) as a git bundle in blob storage.
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  BACKUP_ACCOUNT: sttfstatesubash01
+  BACKUP_CONTAINER: repo-backup
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    # Uses the dev environment so the existing OIDC credential (subject ...:environment:dev) applies.
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create bundle
+        run: |
+          STAMP=$(date -u +%Y%m%d-%H%M)
+          echo "BUNDLE=repo-${STAMP}.bundle" >> "$GITHUB_ENV"
+          git bundle create "repo-${STAMP}.bundle" --all
+
+      - name: Verify bundle
+        run: git bundle verify "$BUNDLE"
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upload to blob storage
+        run: |
+          az storage blob upload \
+            --account-name "$BACKUP_ACCOUNT" \
+            --container-name "$BACKUP_CONTAINER" \
+            --name "$BUNDLE" \
+            --file "$BUNDLE" \
+            --auth-mode login
